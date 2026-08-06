@@ -3,7 +3,7 @@ module github.com/your-org/exporter-one
 go 1.22
 
 require (
-	github.com/playwright-community/playwright-go v0.4501.1
+	github.com/playwright-community/playwright-go v0.4702.0
 	github.com/prometheus/client_golang v1.20.5
 	gopkg.in/yaml.v3 v3.0.1
 )
