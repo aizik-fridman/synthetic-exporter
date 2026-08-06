@@ -83,6 +83,7 @@ USER exporter
 # The Playwright base image sets PLAYWRIGHT_BROWSERS_PATH so the Go library
 # can locate the bundled Chromium without running `playwright install` again.
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV PLAYWRIGHT_NODEJS_PATH=/usr/bin/node
 
 # ── dumb-init as PID 1 ───────────────────────────────────────────────────────
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
