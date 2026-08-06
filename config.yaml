@@ -1,0 +1,71 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# All-in-One Synthetic Exporter — example configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# SECURITY: Never put real secrets here.
+# Any "value" that matches the pattern  ${ENV_VAR_NAME}  will be resolved at
+# runtime from the host's environment variables.
+# ─────────────────────────────────────────────────────────────────────────────
+
+system_name: "my-e-commerce-app"
+
+# API / health endpoints checked for HTTP status & SSL certificate expiry
+api_endpoints:
+  - "https://my-e-commerce-app.example.com/api/health"
+  - "https://my-e-commerce-app.example.com/api/v1/products"
+  - "https://payments.example.com/status"
+
+# UI synthetic journey definition
+# Supported actions: goto | fill | click | wait_for_selector | screenshot
+stages:
+  - name: "navigate_to_login"
+    action: "goto"
+    target: "https://my-e-commerce-app.example.com/login"
+    error_type_name: "navigation_failed"
+
+  - name: "fill_username"
+    action: "fill"
+    target: "xpath=//input[@id='username']"
+    # ${APP_USERNAME} will be replaced with os.Getenv("APP_USERNAME") at runtime
+    value: "${APP_USERNAME}"
+    error_type_name: "username_field_missing"
+
+  - name: "fill_password"
+    action: "fill"
+    target: "xpath=//input[@id='password']"
+    value: "${APP_PASSWORD}"
+    error_type_name: "password_field_missing"
+
+  - name: "click_login_button"
+    action: "click"
+    target: "xpath=//button[@data-testid='login-submit']"
+    error_type_name: "login_failed"
+
+  - name: "wait_for_dashboard"
+    action: "wait_for_selector"
+    target: "xpath=//div[@data-testid='dashboard-container']"
+    error_type_name: "dashboard_load_timeout"
+
+  - name: "click_products_menu"
+    action: "click"
+    target: "xpath=//nav//a[contains(text(),'Products')]"
+    error_type_name: "products_menu_missing"
+
+  - name: "wait_for_product_grid"
+    action: "wait_for_selector"
+    target: "xpath=//div[@class='product-grid']"
+    error_type_name: "product_grid_load_timeout"
+
+  - name: "click_first_add_to_cart"
+    action: "click"
+    target: "xpath=(//button[@data-testid='add-to-cart'])[1]"
+    error_type_name: "cart_button_missing"
+
+  - name: "wait_for_cart_badge"
+    action: "wait_for_selector"
+    target: "xpath=//span[@data-testid='cart-count' and text()='1']"
+    error_type_name: "cart_badge_update_failed"
+
+  - name: "screenshot_final_state"
+    action: "screenshot"
+    target: "/tmp/journey_final.png"
+    error_type_name: "screenshot_failed"

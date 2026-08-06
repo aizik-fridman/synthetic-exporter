@@ -1,0 +1,16 @@
+# Binaries
+*.exe
+*.exe.log
+*.dll
+*.so
+*.dylib
+exporter-one
+
+# Screenshots / Temporary test artifacts
+*.png
+/tmp/
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.swp
