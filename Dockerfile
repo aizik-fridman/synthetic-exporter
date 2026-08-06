@@ -51,7 +51,7 @@ RUN apt-get update && \
 
 # Non-root user for security hardening.
 RUN groupadd --gid 10001 exporter && \
-    useradd  --uid 10001 --gid exporter --shell /sbin/nologin --no-create-home exporter
+    useradd  --uid 10001 --gid exporter --shell /sbin/nologin -m exporter
 
 WORKDIR /app
 
