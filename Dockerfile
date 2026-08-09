@@ -74,7 +74,7 @@ COPY config.yaml ./config.yaml
 RUN chmod +x ./synthetic-exporter
 
 # Prometheus default port for exporters.
-EXPOSE 9114
+EXPOSE 10050
 
 # Switch to the non-root user.
 USER exporter
@@ -89,7 +89,7 @@ ENV PLAYWRIGHT_NODEJS_PATH=/usr/bin/node
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 # Default command — override -config and -listen-address as needed.
-CMD ["./synthetic-exporter", "-config", "/app/config.yaml", "-listen-address", ":9114"]
+CMD ["./synthetic-exporter", "-config", "/app/config.yaml", "-listen-address", ":10050"]
 
 
 # ── Build instructions ────────────────────────────────────────────────────────
@@ -97,11 +97,11 @@ CMD ["./synthetic-exporter", "-config", "/app/config.yaml", "-listen-address", "
 #   docker build -t synthetic-exporter:latest .
 #
 # Run (passing secrets as environment variables, NEVER in the image):
-#   docker run --rm -p 9114:9114 \
+#   docker run --rm -p 10050:10050 \
 #     -e APP_USERNAME="myuser" \
 #     -e APP_PASSWORD="s3cr3t" \
 #     -v $(pwd)/config.yaml:/app/config.yaml:ro \
 #     synthetic-exporter:latest
 #
 # Scrape metrics:
-#   curl http://localhost:9114/metrics
+#   curl http://localhost:10050/metrics

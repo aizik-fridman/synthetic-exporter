@@ -27,9 +27,9 @@ import (
 
 // Config is the top-level structure unmarshalled from config.yaml.
 type Config struct {
-	SystemName   string     `yaml:"system_name"`
-	APIEndpoints []string   `yaml:"api_endpoints"`
-	Stages       []UIStage  `yaml:"stages"`
+	SystemName   string    `yaml:"system_name"`
+	APIEndpoints []string  `yaml:"api_endpoints"`
+	Stages       []UIStage `yaml:"stages"`
 }
 
 // UIStage represents a single step in the synthetic UI journey.
@@ -63,11 +63,11 @@ func resolveSecret(raw string) string {
 
 // metrics holds all custom Prometheus descriptors.
 type metrics struct {
-	httpStatusCode      *prometheus.GaugeVec
-	sslCertExpiryDays   *prometheus.GaugeVec
-	uiStageDurationSecs *prometheus.GaugeVec
-	uiJourneySuccess    *prometheus.GaugeVec
-	uiJourneyErrors     *prometheus.CounterVec
+	httpStatusCode         *prometheus.GaugeVec
+	sslCertExpiryTimestamp *prometheus.GaugeVec
+	uiStageDurationSecs   *prometheus.GaugeVec
+	uiJourneySuccess      *prometheus.GaugeVec
+	uiJourneyErrors       *prometheus.CounterVec
 }
 
 // newMetrics creates and registers all Prometheus metrics against the provided
@@ -80,9 +80,9 @@ func newMetrics(reg *prometheus.Registry) *metrics {
 			Help: "HTTP response status code returned by the API endpoint.",
 		}, []string{"system_name", "endpoint"}),
 
-		sslCertExpiryDays: prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Name: "synthetic_ssl_cert_expiry_days",
-			Help: "Number of days until the TLS certificate of the endpoint expires.",
+		sslCertExpiryTimestamp: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "synthetic_ssl_cert_expiry_timestamp_seconds",
+			Help: "Unix timestamp of the TLS certificate expiration date.",
 		}, []string{"system_name", "endpoint"}),
 
 		uiStageDurationSecs: prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -103,7 +103,7 @@ func newMetrics(reg *prometheus.Registry) *metrics {
 
 	reg.MustRegister(
 		m.httpStatusCode,
-		m.sslCertExpiryDays,
+		m.sslCertExpiryTimestamp,
 		m.uiStageDurationSecs,
 		m.uiJourneySuccess,
 		m.uiJourneyErrors,
@@ -135,7 +135,7 @@ func checkAPIEndpoints(cfg *Config, m *metrics) {
 		if err != nil {
 			slog.Error("HTTP check failed", "endpoint", ep, "error", err)
 			m.httpStatusCode.WithLabelValues(cfg.SystemName, ep).Set(-1)
-			m.sslCertExpiryDays.WithLabelValues(cfg.SystemName, ep).Set(-1)
+			m.sslCertExpiryTimestamp.WithLabelValues(cfg.SystemName, ep).Set(-1)
 			continue
 		}
 		defer resp.Body.Close()
@@ -143,15 +143,15 @@ func checkAPIEndpoints(cfg *Config, m *metrics) {
 		m.httpStatusCode.WithLabelValues(cfg.SystemName, ep).Set(float64(resp.StatusCode))
 		slog.Info("HTTP check", "endpoint", ep, "status", resp.StatusCode)
 
-		// TLS certificate expiry
+		// TLS certificate expiry — expose as absolute Unix timestamp (seconds).
 		if resp.TLS != nil && len(resp.TLS.PeerCertificates) > 0 {
 			cert := resp.TLS.PeerCertificates[0]
-			daysRemaining := time.Until(cert.NotAfter).Hours() / 24
-			m.sslCertExpiryDays.WithLabelValues(cfg.SystemName, ep).Set(daysRemaining)
-			slog.Info("SSL cert expiry", "endpoint", ep, "days_remaining", fmt.Sprintf("%.1f", daysRemaining))
+			expiryTimestamp := float64(cert.NotAfter.Unix())
+			m.sslCertExpiryTimestamp.WithLabelValues(cfg.SystemName, ep).Set(expiryTimestamp)
+			slog.Info("SSL cert expiry", "endpoint", ep, "expiry_timestamp", cert.NotAfter.Unix())
 		} else {
-			// Plain HTTP or no peer cert info available
-			m.sslCertExpiryDays.WithLabelValues(cfg.SystemName, ep).Set(-1)
+			// Plain HTTP or no peer cert info available.
+			m.sslCertExpiryTimestamp.WithLabelValues(cfg.SystemName, ep).Set(-1)
 		}
 	}
 }
@@ -160,15 +160,11 @@ func checkAPIEndpoints(cfg *Config, m *metrics) {
 
 // runUIJourney launches Playwright, navigates through all configured stages,
 // records per-stage timing, and updates the success/error metrics.
+//
+// NOTE: playwright.Install() is called once at startup in main().
+// This function only starts the Playwright server and launches a browser.
 func runUIJourney(cfg *Config, m *metrics) {
 	slog.Info("Starting UI journey", "system", cfg.SystemName, "stages", len(cfg.Stages))
-
-	// Install browsers on first run (no-op if already installed).
-	if err := playwright.Install(&playwright.RunOptions{Browsers: []string{"chromium"}}); err != nil {
-		slog.Error("playwright browser install failed", "error", err)
-		m.uiJourneySuccess.WithLabelValues(cfg.SystemName).Set(0)
-		return
-	}
 
 	pw, err := playwright.Run()
 	if err != nil {
@@ -314,44 +310,35 @@ func loadConfig(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// ─── Collector ────────────────────────────────────────────────────────────────
+// ─── Background Worker ───────────────────────────────────────────────────────
 
-// syntheticCollector wraps the scrape logic so it is triggered on every
-// Prometheus /metrics scrape rather than on a fixed background timer.
-// For high-frequency scrapes, consider adding a minimum rescrape interval.
-type syntheticCollector struct {
-	cfg *Config
-	m   *metrics
-}
+// runBackgroundChecks runs API and UI checks on a fixed interval in the
+// background, updating Prometheus metrics in-place.  This decouples test
+// execution from the /metrics scrape path, eliminating race conditions and
+// scrape timeouts caused by on-demand browser launches.
+func runBackgroundChecks(cfg *Config, m *metrics, interval time.Duration) {
+	// Run checks immediately on startup so metrics are populated before
+	// the first Prometheus scrape arrives.
+	slog.Info("Running initial synthetic checks")
+	checkAPIEndpoints(cfg, m)
+	runUIJourney(cfg, m)
 
-// Describe satisfies prometheus.Collector — the real descriptors are already
-// registered via newMetrics.
-func (sc *syntheticCollector) Describe(_ chan<- *prometheus.Desc) {}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
 
-// Collect runs both the API endpoint checks and the full UI journey then
-// delegates collection to the underlying GaugeVec/CounterVec.
-func (sc *syntheticCollector) Collect(ch chan<- prometheus.Metric) {
-	checkAPIEndpoints(sc.cfg, sc.m)
-	runUIJourney(sc.cfg, sc.m)
-
-	sc.m.httpStatusCode.Collect(ch)
-	sc.m.sslCertExpiryDays.Collect(ch)
-	sc.m.uiStageDurationSecs.Collect(ch)
-	sc.m.uiJourneySuccess.Collect(ch)
-	sc.m.uiJourneyErrors.Collect(ch)
-
-	// Reset gauges so stale labels from a previous scrape do not persist.
-	sc.m.httpStatusCode.Reset()
-	sc.m.sslCertExpiryDays.Reset()
-	sc.m.uiStageDurationSecs.Reset()
-	sc.m.uiJourneySuccess.Reset()
+	for range ticker.C {
+		slog.Info("Tick: running synthetic checks", "interval", interval.String())
+		checkAPIEndpoints(cfg, m)
+		runUIJourney(cfg, m)
+	}
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "Path to the YAML configuration file")
-	listenAddr := flag.String("listen-address", ":9114", "Address on which to expose /metrics")
+	listenAddr := flag.String("listen-address", ":10050", "Address on which to expose /metrics")
+	checkInterval := flag.Duration("check-interval", 60*time.Second, "Interval between synthetic check runs")
 	flag.Parse()
 
 	// Structured logging (Go 1.21+)
@@ -370,14 +357,22 @@ func main() {
 		"stages", len(cfg.Stages),
 	)
 
+	// Install Playwright browsers exactly once at startup.
+	// Fail fast if the installation cannot complete.
+	slog.Info("Installing Playwright browsers (one-time setup)")
+	if err := playwright.Install(&playwright.RunOptions{Browsers: []string{"chromium"}}); err != nil {
+		slog.Error("Playwright browser installation failed", "error", err)
+		os.Exit(1)
+	}
+
 	// Build a fresh non-default registry so we do not expose Go runtime metrics
 	// alongside synthetic metrics (keep the /metrics payload focused).
 	reg := prometheus.NewRegistry()
 	m := newMetrics(reg)
 
-	// Register the on-demand collector.
-	col := &syntheticCollector{cfg: cfg, m: m}
-	reg.MustRegister(col)
+	// Launch background worker that runs synthetic checks on a fixed interval.
+	// Prometheus scrapes will instantly return the latest cached metrics.
+	go runBackgroundChecks(cfg, m, *checkInterval)
 
 	// HTTP server
 	mux := http.NewServeMux()
@@ -400,8 +395,8 @@ func main() {
 	srv := &http.Server{
 		Addr:         *listenAddr,
 		Handler:      mux,
-		ReadTimeout:  120 * time.Second, // long: scrape may take time
-		WriteTimeout: 120 * time.Second,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 

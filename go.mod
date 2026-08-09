@@ -1,4 +1,4 @@
-module github.com/your-org/exporter-one
+module github.com/aizik-fridman/synthetic-exporter
 
 go 1.22
 

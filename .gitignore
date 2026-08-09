@@ -4,7 +4,7 @@
 *.dll
 *.so
 *.dylib
-exporter-one
+synthetic-exporter
 
 # Screenshots / Temporary test artifacts
 *.png

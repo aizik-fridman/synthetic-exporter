@@ -1,6 +1,6 @@
-# 🚀 All-in-One Synthetic Exporter (Go + Playwright + Prometheus)
+# 🚀 Synthetic Exporter (Go + Playwright + Prometheus)
 
-An enterprise-grade, high-performance synthetic monitoring exporter written in **Go**. It continuously checks API HTTP statuses, TLS certificate expiration dates, and executes full multi-step **headless browser UI user journeys** via **Playwright for Go**, exposing rich **Prometheus metrics**.
+An enterprise-grade, high-performance synthetic monitoring exporter written in **Go**. It continuously checks API HTTP statuses, TLS certificate expiration timestamps, and executes full multi-step **headless browser UI user journeys** via **Playwright for Go**, exposing rich **Prometheus metrics**.
 
 ---
 
@@ -10,7 +10,8 @@ An enterprise-grade, high-performance synthetic monitoring exporter written in *
 - 🏷️ **Custom Error Labelling**: Map stage-specific failures to predefined `error_type_name` labels (e.g., `login_failed`, `cart_button_missing`) for instant alert categorization.
 - 🔐 **Secure Secret Management**: Reference environment variables directly in configuration (`${ENV_VAR}`)—secrets are never hardcoded.
 - 🎭 **Playwright for Go**: Full headless browser automation for reliable UI testing and interaction timing.
-- 📊 **Prometheus Integration**: Exposes HTTP status codes, SSL cert expiration countdowns (in days), stage duration timing, and journey error counts labeled by `system_name`.
+- 📊 **Prometheus Integration**: Exposes HTTP status codes, SSL cert expiration timestamps (Unix epoch seconds), stage duration timing, and journey error counts labeled by `system_name`.
+- 🔄 **Background Worker Architecture**: Synthetic checks run in a background goroutine on a configurable interval. Prometheus scrapes instantly return cached metrics—no browser launch on scrape.
 - 🐳 **Production-Ready Containerization**: Multi-stage Dockerfile leveraging official Playwright image with `dumb-init` (PID 1) for zombie Chrome process reaping and non-root execution.
 
 ---
@@ -22,10 +23,44 @@ All metrics include the label `system_name` for seamless multi-tenant aggregatio
 | Metric Name | Type | Description | Labels |
 |---|---|---|---|
 | `synthetic_http_status_code` | Gauge | Response HTTP status code for API endpoints (-1 on network failure). | `system_name`, `endpoint` |
-| `synthetic_ssl_cert_expiry_days` | Gauge | Remaining days until TLS certificate expires. | `system_name`, `endpoint` |
+| `synthetic_ssl_cert_expiry_timestamp_seconds` | Gauge | Unix timestamp (seconds) of the TLS certificate expiration date. | `system_name`, `endpoint` |
 | `synthetic_ui_stage_duration_seconds` | Gauge | Elapsed time in seconds for a specific UI journey stage. | `system_name`, `stage_name`, `action` |
 | `synthetic_ui_journey_success` | Gauge | `1` if entire journey passed, `0` if any stage failed. | `system_name` |
 | `synthetic_ui_journey_errors_total` | Counter | Total journey errors incremented at the exact point of failure. | `system_name`, `stage_name`, `error_type_name` |
+
+---
+
+## 📋 Example Output
+
+A realistic raw response from `curl http://localhost:10050/metrics`:
+
+```
+# HELP synthetic_http_status_code HTTP response status code returned by the API endpoint.
+# TYPE synthetic_http_status_code gauge
+synthetic_http_status_code{endpoint="https://my-e-commerce-app.example.com/api/health",system_name="my-e-commerce-app"} 200
+synthetic_http_status_code{endpoint="https://my-e-commerce-app.example.com/api/v1/products",system_name="my-e-commerce-app"} 200
+
+# HELP synthetic_ssl_cert_expiry_timestamp_seconds Unix timestamp of the TLS certificate expiration date.
+# TYPE synthetic_ssl_cert_expiry_timestamp_seconds gauge
+synthetic_ssl_cert_expiry_timestamp_seconds{endpoint="https://my-e-commerce-app.example.com/api/health",system_name="my-e-commerce-app"} 1.7839584e+09
+synthetic_ssl_cert_expiry_timestamp_seconds{endpoint="https://my-e-commerce-app.example.com/api/v1/products",system_name="my-e-commerce-app"} 1.7839584e+09
+
+# HELP synthetic_ui_stage_duration_seconds Elapsed time in seconds for each UI journey stage.
+# TYPE synthetic_ui_stage_duration_seconds gauge
+synthetic_ui_stage_duration_seconds{action="goto",stage_name="navigate_to_login",system_name="my-e-commerce-app"} 1.204
+synthetic_ui_stage_duration_seconds{action="fill",stage_name="fill_username",system_name="my-e-commerce-app"} 0.087
+synthetic_ui_stage_duration_seconds{action="fill",stage_name="fill_password",system_name="my-e-commerce-app"} 0.062
+synthetic_ui_stage_duration_seconds{action="click",stage_name="click_login_button",system_name="my-e-commerce-app"} 0.341
+synthetic_ui_stage_duration_seconds{action="wait_for_selector",stage_name="wait_for_dashboard",system_name="my-e-commerce-app"} 2.105
+
+# HELP synthetic_ui_journey_success 1 if the full UI journey completed without errors, 0 otherwise.
+# TYPE synthetic_ui_journey_success gauge
+synthetic_ui_journey_success{system_name="my-e-commerce-app"} 1
+
+# HELP synthetic_ui_journey_errors_total Total number of UI journey failures, labelled by the stage's error_type_name.
+# TYPE synthetic_ui_journey_errors_total counter
+synthetic_ui_journey_errors_total{error_type_name="navigation_failed",stage_name="navigate_to_login",system_name="my-e-commerce-app"} 0
+```
 
 ---
 
@@ -77,18 +112,18 @@ Ensure you have **Go 1.22+** installed:
 
 ```bash
 # Clone repository
-git clone https://github.com/aizik-fridman/exporter-One.git
-cd exporter-One
+git clone https://github.com/aizik-fridman/synthetic-exporter.git
+cd synthetic-exporter
 
 # Set credentials in host environment
 export APP_USERNAME="my_test_user"
 export APP_PASSWORD="my_secret_password"
 
 # Download dependencies & run
-go run main.go -config config.yaml -listen-address :9114
+go run main.go -config config.yaml -listen-address :10050
 ```
 
-Access metrics at: `http://localhost:9114/metrics`
+Access metrics at: `http://localhost:10050/metrics`
 
 ---
 
@@ -101,12 +136,30 @@ Build and run using the optimized multi-stage `Dockerfile`:
 docker build -t synthetic-exporter:latest .
 
 # Run container with environment variables
-docker run --rm -p 9114:9114 \
+docker run --rm -p 10050:10050 \
   -e APP_USERNAME="my_test_user" \
   -e APP_PASSWORD="my_secret_password" \
   -v $(pwd)/config.yaml:/app/config.yaml:ro \
   synthetic-exporter:latest
 ```
+
+---
+
+## 🏗️ Architecture
+
+The exporter uses a **background worker pattern**:
+
+1. **Startup**: `playwright.Install()` runs once to ensure browsers are available.
+2. **Background goroutine**: A `time.Ticker` (default 60s, configurable via `--check-interval`) triggers `checkAPIEndpoints` and `runUIJourney` in an infinite loop.
+3. **Scrape path**: When Prometheus hits `/metrics`, it instantly returns the latest cached metric values — no browser launch, no race conditions, no timeouts.
+
+### CLI Flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `-config` | `config.yaml` | Path to the YAML configuration file |
+| `-listen-address` | `:10050` | Address on which to expose `/metrics` |
+| `-check-interval` | `60s` | Interval between synthetic check runs |
 
 ---
 
