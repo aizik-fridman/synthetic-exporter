@@ -37,6 +37,16 @@ All metrics include the `service` label for identifying the monitored service.
 
 ---
 
+## Grafana Dashboard
+
+You can use the project's ready-made Grafana visualization by importing
+the dashboard directly from **Grafana Labs Dashboards**.
+
+In Grafana, go to **Dashboards → New → Import**, enter dashboard ID
+**25651**, select your Prometheus data source, and import the dashboard.
+
+![Synthetic Exporter Grafana Dashboard](grafana/dashboard.png)
+
 ## Example Output
 
 A raw response from `curl http://localhost:10050/metrics`:
