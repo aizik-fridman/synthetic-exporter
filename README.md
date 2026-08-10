@@ -1,43 +1,47 @@
-# 🚀 Synthetic Exporter (Go + Playwright + Prometheus)
+# Synthetic Exporter (Go + Playwright + Prometheus)
 
-An enterprise-grade, high-performance synthetic monitoring exporter written in **Go**. It continuously checks API HTTP statuses, TLS certificate expiration timestamps, and executes full multi-step **headless browser UI scenarios** via **Playwright for Go**, exposing rich **Prometheus metrics**.
+A synthetic monitoring exporter written in **Go**, designed to integrate with existing Prometheus-based monitoring stacks. It performs API HTTP status checks, TLS certificate expiration checks, and multi-step **headless browser UI scenarios** using **Playwright for Go**, exposing the results as Prometheus metrics.
 
----
-
-## ✨ Features
-
-- 📜 **Declarative YAML Configuration**: Define multiple synthetic UI scenarios with modular step actions (`goto`, `fill`, `click`, `wait_for_selector`, `screenshot`).
-- 🔀 **Multi-Scenario Support**: Run independent UI journeys (e.g., login, search, checkout) each with their own steps, tracked separately in Prometheus with a `scenario` label.
-- 🌐 **Advanced API Configuration**: Configure API endpoints as objects with a `url` and optional custom `headers` (e.g., `Authorization: Bearer ...`). Null or omitted headers are handled gracefully.
-- 🏷️ **Custom Error Labelling**: Map step-specific failures to predefined `error_type_name` labels (e.g., `login_failed`, `cart_button_missing`) for instant alert categorization.
-- 🔐 **Secure Secret Management**: Reference environment variables directly in configuration (`${ENV_VAR}`)—secrets are never hardcoded.
-- 🎭 **Playwright for Go**: Full headless browser automation for reliable UI testing and interaction timing.
-- ⚡ **Concurrent API Checks**: HTTP/SSL checks run in parallel via `sync.WaitGroup` for minimal total check duration.
-- 📊 **Prometheus Integration**: Exposes HTTP status codes, SSL cert expiration timestamps (Unix epoch seconds), step duration timing, and journey error counts labeled by `service` and `scenario`.
-- 🔄 **Background Worker Architecture**: Synthetic checks run in a background goroutine on a configurable interval. Prometheus scrapes instantly return cached metrics—no browser launch on scrape.
-- 🐳 **Production-Ready Containerization**: Multi-stage Dockerfile leveraging official Playwright image with `dumb-init` (PID 1) for zombie Chrome process reaping and non-root execution.
+The exporter focuses on running synthetic checks and exposing their results as metrics. It does not provide a monitoring UI, alerting system, dashboards, or long-term metric storage itself, and is intended to be integrated into an existing monitoring stack.
 
 ---
 
-## 📊 Exposed Prometheus Metrics
+## Features
 
-All metrics include the label `service` for seamless multi-tenant aggregation:
-
-| Metric Name | Type | Description | Labels |
-|---|---|---|---|
-| `synthetic_http_status_code` | Gauge | Response HTTP status code for API endpoints (-1 on network failure). | `service`, `endpoint` |
-| `synthetic_ssl_cert_expiry_timestamp_seconds` | Gauge | Unix timestamp (seconds) of the TLS certificate expiration date. | `service`, `endpoint` |
-| `synthetic_ui_step_duration_seconds` | Gauge | Elapsed time in seconds for a specific UI journey step. | `service`, `scenario`, `step_name`, `action` |
-| `synthetic_ui_journey_success` | Gauge | `1` if entire scenario passed, `0` if any step failed. | `service`, `scenario` |
-| `synthetic_ui_journey_errors_total` | Counter | Total journey errors incremented at the exact point of failure. | `service`, `scenario`, `step_name`, `error_type_name` |
+* **Declarative YAML Configuration**: Define multiple synthetic UI scenarios with modular step actions (`goto`, `fill`, `click`, `wait_for_selector`, `screenshot`).
+* **Multi-Scenario Support**: Run independent UI journeys (e.g., login, search, checkout) each with their own steps, tracked separately in Prometheus with a `scenario` label.
+* **API Configuration**: Configure API endpoints as objects with a `url` and optional custom `headers` (e.g., `Authorization: Bearer ...`). Null or omitted headers are handled gracefully.
+* **Custom Error Labelling**: Map step-specific failures to predefined `error_type_name` labels (e.g., `login_failed`, `cart_button_missing`) for alert categorization in the monitoring system.
+* **Environment-Based Secrets**: Reference environment variables directly in configuration (`${ENV_VAR}`) so secrets do not need to be stored in the YAML configuration.
+* **Playwright for Go**: Execute headless browser automation for multi-step UI journeys.
+* **Concurrent API Checks**: HTTP/TLS checks run in parallel via `sync.WaitGroup`.
+* **Prometheus Metrics**: Exposes HTTP status codes, TLS certificate expiration timestamps, step durations, journey status, and journey error counters.
+* **Background Worker**: Synthetic checks run in a background goroutine on a configurable interval. Prometheus scrapes return cached metrics without triggering a new browser session.
+* **Docker Support**: Includes a multi-stage Dockerfile with the required Playwright runtime, `dumb-init`, and a non-root runtime user.
 
 ---
 
-## 📋 Example Output
+## Prometheus Metrics
 
-A realistic raw response from `curl http://localhost:10050/metrics`:
+The exporter exposes metrics that can be scraped by an existing Prometheus instance and then used by the surrounding monitoring stack for dashboards, alerting, recording rules, or other analysis.
 
-```
+All metrics include the `service` label for identifying the monitored service.
+
+| Metric Name                                   | Type    | Description                                                          | Labels                                                |
+| --------------------------------------------- | ------- | -------------------------------------------------------------------- | ----------------------------------------------------- |
+| `synthetic_http_status_code`                  | Gauge   | Response HTTP status code for API endpoints (-1 on network failure). | `service`, `endpoint`                                 |
+| `synthetic_ssl_cert_expiry_timestamp_seconds` | Gauge   | Unix timestamp of the TLS certificate expiration date.               | `service`, `endpoint`                                 |
+| `synthetic_ui_step_duration_seconds`          | Gauge   | Elapsed time in seconds for a specific UI journey step.              | `service`, `scenario`, `step_name`, `action`          |
+| `synthetic_ui_journey_success`                | Gauge   | `1` if the entire scenario passed, `0` if any step failed.           | `service`, `scenario`                                 |
+| `synthetic_ui_journey_errors_total`           | Counter | Total journey errors, incremented at the point of failure.           | `service`, `scenario`, `step_name`, `error_type_name` |
+
+---
+
+## Example Output
+
+A raw response from `curl http://localhost:10050/metrics`:
+
+```text
 # HELP synthetic_http_status_code HTTP response status code returned by the API endpoint.
 # TYPE synthetic_http_status_code gauge
 synthetic_http_status_code{endpoint="https://api.github.com/zen",service="github-production"} 200
@@ -72,7 +76,7 @@ synthetic_ui_journey_errors_total{error_type_name="navigation_failed",scenario="
 
 ---
 
-## ⚙️ Configuration (`config.yaml`)
+## Configuration (`config.yaml`)
 
 ```yaml
 service: "github-production"
@@ -144,7 +148,7 @@ scenarios:
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Running Locally
 
@@ -164,13 +168,17 @@ export GITHUB_TOKEN="Bearer ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 go run main.go -config config.yaml -listen-address :10050
 ```
 
-Access metrics at: `http://localhost:10050/metrics`
+Access metrics at:
 
----
+```text
+http://localhost:10050/metrics
+```
+
+The endpoint can then be added as a scrape target in an existing Prometheus installation.
 
 ### 2. Running with Docker
 
-Build and run using the optimized multi-stage `Dockerfile`:
+Build and run using the included Dockerfile:
 
 ```bash
 # Build image
@@ -187,36 +195,41 @@ docker run --rm -p 10050:10050 \
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
-The exporter uses a **background worker pattern** with **concurrent API checks** and **sequential UI scenarios**:
+The exporter uses a background worker pattern with concurrent API checks and sequential UI scenarios:
 
 1. **Startup**: `playwright.Install()` runs once to ensure browsers are available.
-2. **Background goroutine**: A `time.Ticker` (default 60s, configurable via `--check-interval`) triggers checks in an infinite loop:
-   - **API checks** run concurrently via `sync.WaitGroup` — HTTP requests are lightweight I/O-bound tasks.
-   - **UI scenarios** run sequentially — headless browsers are CPU/RAM-intensive. Concurrent Playwright contexts in a single container risk OOM crashes.
-3. **Scrape path**: When Prometheus hits `/metrics`, it instantly returns the latest cached metric values — no browser launch, no race conditions, no timeouts.
+2. **Background worker**: A `time.Ticker` (default 60s, configurable via `--check-interval`) triggers checks:
+
+   * **API checks** run concurrently via `sync.WaitGroup`.
+   * **UI scenarios** run sequentially because headless browsers are CPU/RAM-intensive.
+3. **Scrape path**: When Prometheus requests `/metrics`, the exporter returns the latest cached metric values. A scrape does not start a new synthetic check or browser session.
 
 ### CLI Flags
 
-| Flag | Default | Description |
-|---|---|---|
-| `-config` | `config.yaml` | Path to the YAML configuration file |
-| `-listen-address` | `:10050` | Address on which to expose `/metrics` |
-| `-check-interval` | `60s` | Interval between synthetic check runs |
+| Flag              | Default       | Description                           |
+| ----------------- | ------------- | ------------------------------------- |
+| `-config`         | `config.yaml` | Path to the YAML configuration file   |
+| `-listen-address` | `:10050`      | Address on which to expose `/metrics` |
+| `-check-interval` | `60s`         | Interval between synthetic check runs |
 
 ---
 
-## 🐳 Docker Architecture & Process Management
+## Docker Architecture & Process Management
 
-The `Dockerfile` follows enterprise best practices:
+The Dockerfile uses a multi-stage build:
+
 1. **Multi-Stage Build**: Compiles a static Go binary using `golang:1.22-alpine` (`CGO_ENABLED=0`).
-2. **Pre-packaged Runtime**: Uses `mcr.microsoft.com/playwright:v1.47.0-noble` so Chromium dependencies and system libraries are built-in.
-3. **Zombie Process Reaping (`dumb-init`)**: Headless Chrome creates subprocesses on every run. `dumb-init` runs as `ENTRYPOINT` (PID 1) to harvest orphan processes and forward Linux signals (`SIGTERM`, `SIGINT`) cleanly.
-4. **Least Privilege**: Executes under non-root user `exporter` (`uid 10001`).
+2. **Playwright Runtime**: Uses `mcr.microsoft.com/playwright:v1.47.0-noble` with Chromium dependencies and system libraries included.
+3. **Process Management**: `dumb-init` runs as PID 1 to reap orphaned processes and forward Linux signals such as `SIGTERM` and `SIGINT`.
+4. **Non-Root Execution**: The exporter runs under the `exporter` user (`uid 10001`).
 
 ---
 
-## 📄 License
+## License
 
 MIT License. See [LICENSE](LICENSE) for details.
+
+```
+```
