@@ -45,7 +45,7 @@ the dashboard directly from **Grafana Labs Dashboards**.
 In Grafana, go to **Dashboards → New → Import**, enter dashboard ID
 **25651**, select your Prometheus data source, and import the dashboard.
 
-![Synthetic Exporter Grafana Dashboard](grafana/dashboard.png)
+![https://grafana.com/grafana/dashboards/25651-synthetic-exporter-monitoring/](grafana/screenshot.png)
 
 ## Example Output
 
