@@ -1,71 +1,86 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# All-in-One Synthetic Exporter — example configuration
+# Synthetic Exporter — GitHub Example Configuration
 # ─────────────────────────────────────────────────────────────────────────────
 # SECURITY: Never put real secrets here.
 # Any "value" that matches the pattern  ${ENV_VAR_NAME}  will be resolved at
 # runtime from the host's environment variables.
 # ─────────────────────────────────────────────────────────────────────────────
 
-system_name: "my-e-commerce-app"
+service: "github-production"
 
-# API / health endpoints checked for HTTP status & SSL certificate expiry
+# API endpoints checked for HTTP status & SSL certificate expiry.
+# Each entry has a 'url' and an optional 'headers' map.
+# If 'headers' is omitted or null, the request proceeds without custom headers.
 api_endpoints:
-  - "https://my-e-commerce-app.example.com/api/health"
-  - "https://my-e-commerce-app.example.com/api/v1/products"
-  - "https://payments.example.com/status"
+  - url: "https://api.github.com/zen"
+    headers:
+      Authorization: "${GITHUB_TOKEN}"
+      Accept: "application/vnd.github.v3+json"
+  - url: "https://github.com/status"
+    # No headers — plain GET request.
 
-# UI synthetic journey definition
-# Supported actions: goto | fill | click | wait_for_selector | screenshot
-stages:
-  - name: "navigate_to_login"
-    action: "goto"
-    target: "https://my-e-commerce-app.example.com/login"
-    error_type_name: "navigation_failed"
+# UI synthetic scenarios — each scenario is an independent user journey.
+# Scenarios run sequentially to avoid OOM from concurrent browser contexts.
+# Supported step actions: goto | fill | click | wait_for_selector | screenshot
+scenarios:
+  - name: "login_journey"
+    steps:
+      - name: "navigate_to_github_login"
+        action: "goto"
+        target: "https://github.com/login"
+        error_type_name: "navigation_failed"
 
-  - name: "fill_username"
-    action: "fill"
-    target: "xpath=//input[@id='username']"
-    # ${APP_USERNAME} will be replaced with os.Getenv("APP_USERNAME") at runtime
-    value: "${APP_USERNAME}"
-    error_type_name: "username_field_missing"
+      - name: "fill_username"
+        action: "fill"
+        target: "xpath=//input[@id='login_field']"
+        value: "${GITHUB_USERNAME}"
+        error_type_name: "username_field_missing"
 
-  - name: "fill_password"
-    action: "fill"
-    target: "xpath=//input[@id='password']"
-    value: "${APP_PASSWORD}"
-    error_type_name: "password_field_missing"
+      - name: "fill_password"
+        action: "fill"
+        target: "xpath=//input[@id='password']"
+        value: "${GITHUB_PASSWORD}"
+        error_type_name: "password_field_missing"
 
-  - name: "click_login_button"
-    action: "click"
-    target: "xpath=//button[@data-testid='login-submit']"
-    error_type_name: "login_failed"
+      - name: "click_login_button"
+        action: "click"
+        target: "xpath=//input[@type='submit' and @name='commit']"
+        error_type_name: "login_failed"
 
-  - name: "wait_for_dashboard"
-    action: "wait_for_selector"
-    target: "xpath=//div[@data-testid='dashboard-container']"
-    error_type_name: "dashboard_load_timeout"
+      - name: "wait_for_dashboard_avatar"
+        action: "wait_for_selector"
+        target: "xpath=//img[contains(@class, 'avatar')]"
+        error_type_name: "dashboard_load_timeout"
 
-  - name: "click_products_menu"
-    action: "click"
-    target: "xpath=//nav//a[contains(text(),'Products')]"
-    error_type_name: "products_menu_missing"
+      - name: "screenshot_login_final"
+        action: "screenshot"
+        target: "/tmp/github_login_final.png"
+        error_type_name: "screenshot_failed"
 
-  - name: "wait_for_product_grid"
-    action: "wait_for_selector"
-    target: "xpath=//div[@class='product-grid']"
-    error_type_name: "product_grid_load_timeout"
+  - name: "search_journey"
+    steps:
+      - name: "navigate_to_github_home"
+        action: "goto"
+        target: "https://github.com"
+        error_type_name: "navigation_failed"
 
-  - name: "click_first_add_to_cart"
-    action: "click"
-    target: "xpath=(//button[@data-testid='add-to-cart'])[1]"
-    error_type_name: "cart_button_missing"
+      - name: "click_search_button"
+        action: "click"
+        target: "xpath=//button[@data-target='qbsearch-input.inputButton']"
+        error_type_name: "search_button_missing"
 
-  - name: "wait_for_cart_badge"
-    action: "wait_for_selector"
-    target: "xpath=//span[@data-testid='cart-count' and text()='1']"
-    error_type_name: "cart_badge_update_failed"
+      - name: "fill_search_query"
+        action: "fill"
+        target: "xpath=//input[@id='query-builder-test']"
+        value: "synthetic-exporter"
+        error_type_name: "search_input_missing"
 
-  - name: "screenshot_final_state"
-    action: "screenshot"
-    target: "/tmp/journey_final.png"
-    error_type_name: "screenshot_failed"
+      - name: "wait_for_search_results"
+        action: "wait_for_selector"
+        target: "xpath=//div[contains(@class, 'search-results')]"
+        error_type_name: "search_results_timeout"
+
+      - name: "screenshot_search_final"
+        action: "screenshot"
+        target: "/tmp/github_search_final.png"
+        error_type_name: "screenshot_failed"
