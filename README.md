@@ -188,19 +188,24 @@ The endpoint can then be added as a scrape target in an existing Prometheus inst
 
 ### 2. Running with Docker
 
-Build and run using the included Dockerfile:
+The Docker image comes with a baked-in default `config.yaml` that is configured to monitor GitHub's website. In order to use the exporter for your own environments, you must write a custom configuration file matching the targets you wish to monitor.
+
+You can pull the pre-built image from the GitHub Container Registry (GHCR) or build it locally using the included Dockerfile.
 
 ```bash
-# Build image
+# Option 1: Pull from GHCR
+docker pull ghcr.io/aizik-fridman/synthetic-exporter:latest
+
+# Option 2: Build locally
 docker build -t synthetic-exporter:latest .
 
-# Run container with environment variables
+# Run container and mount your custom configuration file using a bind mount (-v)
 docker run --rm -p 10050:10050 \
   -e GITHUB_USERNAME="my_test_user" \
   -e GITHUB_PASSWORD="my_secret_password" \
   -e GITHUB_TOKEN="Bearer ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
-  -v $(pwd)/config.yaml:/app/config.yaml:ro \
-  synthetic-exporter:latest
+  -v /path/to/local/config.yaml:/app/config.yaml:ro \
+  ghcr.io/aizik-fridman/synthetic-exporter:latest
 ```
 
 ---
