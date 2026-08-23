@@ -74,6 +74,7 @@ RUN apt-get update && \
       nodejs \
       npm \
       dumb-init \
+      libxfixes3 \
       ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
