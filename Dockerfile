@@ -13,6 +13,7 @@
 
 # ── Stage 1: Build ────────────────────────────────────────────────────────────
 FROM golang:1.22-alpine AS builder
+ARG TARGETARCH
 
 # Install git (required by `go mod download` for VCS-based modules).
 RUN apk add --no-cache git ca-certificates tzdata
@@ -28,7 +29,7 @@ COPY . .
 
 # CGO_ENABLED=0 produces a fully static binary that runs in a distro-less or
 # minimal container without glibc.
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH \
     go build \
       -trimpath \
       -ldflags="-s -w -extldflags '-static'" \
