@@ -6,7 +6,6 @@
 package main
 
 import (
-	"context"
 	"crypto/tls"
 	"flag"
 	"fmt"
@@ -299,10 +298,6 @@ func runSingleScenario(service string, scenario Scenario, browser playwright.Bro
 
 // executeStep dispatches a single UIStep to the appropriate Playwright call.
 func executeStep(page playwright.Page, step UIStep) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	_ = ctx // Playwright-Go manages its own timeouts; we provide context for future use.
-
 	timeout := float64(30_000) // 30 s in milliseconds
 
 	switch strings.ToLower(step.Action) {
