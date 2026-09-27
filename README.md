@@ -1,5 +1,10 @@
 # Synthetic Exporter (Go + Playwright + Prometheus)
 
+[![Go Version](https://img.shields.io/github/go-mod/go-version/aizik-fridman/synthetic-exporter)](https://github.com/aizik-fridman/synthetic-exporter)
+[![CI Status](https://img.shields.io/github/actions/workflow/status/aizik-fridman/synthetic-exporter/ci.yml?branch=main)](https://github.com/aizik-fridman/synthetic-exporter/actions)
+[![Release](https://img.shields.io/github/v/release/aizik-fridman/synthetic-exporter)](https://github.com/aizik-fridman/synthetic-exporter/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A synthetic monitoring exporter written in **Go**, designed to integrate with existing Prometheus-based monitoring stacks. It performs API HTTP status checks, TLS certificate expiration checks, and multi-step **headless browser UI scenarios** using **Playwright for Go**, exposing the results as Prometheus metrics.
 
 The exporter focuses on running synthetic checks and exposing their results as metrics. It does not provide a monitoring UI, alerting system, dashboards, or long-term metric storage itself, and is intended to be integrated into an existing monitoring stack.
