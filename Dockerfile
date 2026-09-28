@@ -83,11 +83,11 @@ RUN groupadd --gid 10001 exporter && \
     useradd  --uid 10001 --gid exporter --shell /sbin/nologin -m exporter
 
 # Pre-seed the Playwright-Go driver cache to bypass the broken Azure CDN.
-# playwright-go v0.4700.0 looks for driver v1.47.0.
+# playwright-go v0.6000.0 looks for driver v1.60.0.
 # npm install fetches the driver and dependencies, and we symlink it to "package" for playwright-go.
-RUN mkdir -p /home/exporter/.cache/ms-playwright-go/1.47.0 && \
-    cd /home/exporter/.cache/ms-playwright-go/1.47.0 && \
-    npm install playwright@1.47.0 && \
+RUN mkdir -p /home/exporter/.cache/ms-playwright-go/1.60.0 && \
+    cd /home/exporter/.cache/ms-playwright-go/1.60.0 && \
+    npm install playwright@1.60.0 && \
     ln -s node_modules/playwright package && \
     chown -R exporter:exporter /home/exporter/.cache
 
